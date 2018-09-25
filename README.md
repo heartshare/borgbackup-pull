@@ -10,7 +10,7 @@ Ansible 2.4 or higher is required to run this role.
 
 Setup ssh public key authentication from backup server to all clients for the root user
 
-Add to /etc/ssh/sshd_config
+Add to /etc/ssh/sshd_config on the backup server
 ```
 AllowUsers borgbackup@127.0.0.1
 
