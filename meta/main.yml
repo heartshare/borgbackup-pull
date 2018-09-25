@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  author: Masi Osmani
+  description: Install Borg backup server and client - pull mode
+  license: MIT
+  min_ansible_version: 2.4
+  platforms:
+  - name: EL
+    versions:
+    - all
+  - name: Debian
+    versions:
+    - all
+  - name: Ubuntu
+    versions:
+    - all
+  galaxy_tags:
+    - borg
+    - borgbackup
+    - borgbackup-pull
+    - backup

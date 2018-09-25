@@ -1,0 +1,24 @@
+---
+# Due to inverse logic behaviour when searching for an item in an undefined list.
+- set_fact:
+    borgbackup_server_group: "{{ groups.borgbackup_server | default([]) }} "
+
+- include_tasks: install.yml
+  when: >
+    borgbackup_required == True or
+    inventory_hostname in borgbackup_server_group
+
+- include_tasks: borg-server.yml
+  when: inventory_hostname in borgbackup_server_group
+
+- name: client | check if repo directory exists
+  shell: "[ -d {{ item.home }}{{ item.pool }}/{{ inventory_hostname }} ]"
+  with_items: "{{ borgbackup_server }}"
+  register: repo_dir
+  delegate_to: localhost
+  ignore_errors: True
+  no_log: True
+  changed_when: False
+
+- include_tasks: borg-client.yml
+  when: repo_dir is failed or inventory_hostname in groups['borgbackup_clients']

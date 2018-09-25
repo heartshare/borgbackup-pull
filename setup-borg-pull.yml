@@ -1,0 +1,47 @@
+---
+- name: Setup Borg backup - pull mode
+  hosts: all
+  become: True
+
+  vars:
+
+    borgbackup_cleanup: true
+
+    borgbackup_server:
+      - fqdn: localhost
+        port: 2222
+        type: normal
+        home: /mnt/borgbackup/
+        pool: repos
+        options: ""
+
+    borgbackup_retention:
+      hourly: 12
+      daily: 7
+      weekly: 4
+      monthly: 6
+      yearly: 1
+
+    borgbackup_include:
+      - "/"
+
+    borgbackup_exclude:
+      - "/dev/"
+      - "/proc/"
+      - "/sys/"
+      - "/var/run/"
+      - "/run/"
+      - "/mnt/"
+      - "/media/"
+      - "/tmp/"
+      - "/lost+found"
+      - "/var/lib/lxc*"
+      - "/var/lib/mysql*"
+      - "/root/.cache"
+      - "/var/cache/"
+      - "/var/lib/docker/devicemapper/"
+      - "sh:/home/*/.cache"
+
+  roles:
+    - role: borgbackup-pull
+      tags: ['backup']

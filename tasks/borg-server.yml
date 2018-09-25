@@ -1,0 +1,45 @@
+---
+
+- name: server | cleanup all
+  shell: |
+    [ -d "{{ item.home }}" ] && rm -rf {{ item.home }}/ &>/dev/null
+    [ -d "~root/.config/borg/" ] && rm -rf ~root/.config/borg/ &>/dev/null
+    rm -f /usr/local/bin/borg-backup-* &>/dev/null
+    rm -f /etc/cron.d/borg-backup-* &>/dev/null
+    userdel -f -r {{ borgbackup_owner }} &>/dev/null
+  args:
+    executable: /bin/bash
+  with_items: "{{ borgbackup_server }}"
+  register: cleanup
+  delegate_to: localhost
+  ignore_errors: True
+  changed_when: False
+  when: borgbackup_cleanup == true
+
+- name: generate random password for borg borgbackup user
+  local_action: shell openssl rand -base64 20
+  register: borg_password
+  changed_when: False
+
+- name: server | create user
+  user:
+    name: "{{ borgbackup_owner }}"
+    shell: "/bin/bash"
+    home: "{{ item.home }}"
+    createhome: "yes"
+    update_password: "on_create"
+    password: "{{borg_password.stdout}}"
+  delegate_to: localhost
+  with_items: "{{ borgbackup_server }}"
+  when: item.type == 'normal'
+
+- name: server | create directories
+  file:
+    path: "{{ item.home}}{{ item.pool }}"
+    state: "directory"
+    owner: "{{ borgbackup_owner }}"
+    group: "{{ borgbackup_group }}"
+    mode: "0770"
+  delegate_to: localhost
+  with_items: "{{ borgbackup_server }}"
+  when: item.type == 'normal'

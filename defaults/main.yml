@@ -1,0 +1,60 @@
+---
+borgbackup_required: True
+
+borgbackup_client_user: root
+borgbackup_ssh_key: "~{{ borgbackup_client_user }}/.ssh/id_borg_rsa"
+
+borgbackup_version: "1.1.7"
+borgbackup_checksum: "sha256:c23cb9ba8179ad4b9a00662d68d63aee3ee82d88fb3ed0bb1decf50065c8a40e"
+borgbackup_download_url: "https://github.com/borgbackup/borg/releases/download/{{ borgbackup_version }}/borg-linux64"
+
+borgbackup_compression: "auto,zlib,6"
+borgbackup_encryption_mode: keyfile
+
+borgbackup_pre_commands:
+  - '[[ ! -f "/usr/sbin/automysqlbackup" ]] || /usr/sbin/automysqlbackup'
+
+borgbackup_post_commands: []
+
+borgbackup_include:
+  - "/"
+
+borgbackup_exclude:
+  - "/dev/"
+  - "/proc/"
+  - "/sys/"
+  - "/var/run/"
+  - "/run/"
+  - "/mnt/"
+  - "/media/"
+  - "/tmp/"
+  - "/lost+found"
+  - "/var/lib/lxc*"
+  - "/var/lib/mysql*"
+  - "/root/.cache"
+  - "/var/cache/"
+  - "/var/lib/docker/devicemapper/"
+  - "sh:/home/*/.cache"
+
+borgbackup_retention:
+  hourly: 12
+  daily: 7
+  weekly: 4
+  monthly: 6
+  yearly: 1
+
+borgbackup_cron_day: "*"
+borgbackup_cron_hour: "{{ 5|random(seed=inventory_hostname) }}"
+borgbackup_cron_minute: "{{ 59|random(seed=inventory_hostname) }}"
+
+borgbackup_appendonly: False
+borgbackup_appendonly_repoconfig: False
+borgbackup_management_station: ''
+borgbackup_management_user: ''
+borgbackup_management_ssh_pubkey: ''
+
+borgbackup_owner: borgbackup
+borgbackup_group: borgbackup
+borgbackup_shell: "/bin/bash"
+
+borgbackup_cleanup: false

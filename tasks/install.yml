@@ -1,0 +1,10 @@
+---
+- name: install borg backup
+  get_url:
+    dest: "/usr/local/bin/borg"
+    checksum: "{{ borgbackup_checksum }}"
+    owner: "{{ borgbackup_client_user }}"
+    group: "{{ borgbackup_client_user }}"
+    mode: "0755"
+    url: "{{ borgbackup_download_url }}"
+  tags: borginstall
