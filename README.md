@@ -1,7 +1,7 @@
 # Borg backup with pull mode - ansible role
 This role installs Borg backup with pull mode on a borgbackup server and clients. 
 
-The role will add a wrapper-script 'borg-backup-FQDN' for every client on the server. 
+The role will add a wrapper-script 'borg-backup-FQDN' for every client on the backup server. 
 
 Ansible 2.4 or higher is required to run this role.
 
