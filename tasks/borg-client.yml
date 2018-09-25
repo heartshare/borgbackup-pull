@@ -1,5 +1,18 @@
 ---
 
+- name: client | cleanup all
+  shell: |
+    rm -rf ~root/.config/borg/* &>/dev/null ; \
+    rm -rf /var/log/borg-backup/* &>/dev/null ; \
+    rm -f /var/log/borg-*.log &>/dev/null ; \
+    rm -f ~root/.config/*.logrotate &>/dev/null
+  args:
+    executable: /bin/bash
+  register: cleanup_client
+  ignore_errors: True
+  changed_when: False
+  when: borgbackup_cleanup == true
+
 - name: generate random passphrase for borg repo encryption
   local_action: shell openssl rand -base64 20
   register: borg_passphrase
@@ -41,7 +54,7 @@
   authorized_key:
     user: "{{ borgbackup_owner }}"
     key: "{{ sshkey.stdout }}"
-    key_options: 'command="cd {{ item.home }}{{ item.pool }}/{{ inventory_hostname }};borg serve {% if borgbackup_appendonly %}--append-only {% endif %}--restrict-to-path {{ item.home }}/{{ item.pool }}/{{ inventory_hostname }}",no-port-forwarding,no-X11-forwarding,no-pty,no-agent-forwarding,no-user-rc'
+    key_options: 'command="cd {{ item.home }}{{ item.pool }}/{{ inventory_hostname }};borg serve {% if borgbackup_appendonly %}--append-only {% endif %}--restrict-to-path {{ item.home }}{{ item.pool }}/{{ inventory_hostname }}",no-port-forwarding,no-X11-forwarding,no-pty,no-agent-forwarding,no-user-rc'
   delegate_to: localhost
   when: item.type == 'normal'
   with_items: "{{ borgbackup_server }}"
@@ -62,12 +75,6 @@
   changed_when: "'Remember your passphrase' in backup_init.stderr"
   delegate_to: localhost
 
-#- name: client | set backup-directory permissions
-#  shell: chown -R {{ item.user }}:{{ item.group }} "{{ item.home }}{{ item.pool }}/{{ inventory_hostname }}"
-#  become_user: "{{ borgbackup_client_user }}"
-#  register: backup_init
-#  delegate_to: localhost
-
 - name: client | create backup cronjob on server
   cron:
     cron_file: borg-backup-{{ inventory_hostname | regex_replace('[^\w\s]', '_') }}
@@ -78,3 +85,19 @@
     day: "{{ borgbackup_cron_day }}"
     job: "/usr/local/bin/borg-backup-{{ inventory_hostname }} backup"
   delegate_to: localhost
+
+- name: client | create logrotate conf
+  shell: |
+      echo -e "/var/log/borg-backup/borg-backup-*.log {
+        create
+        dateext
+        daily
+        rotate 7
+        compress
+        missingok
+        notifempty
+        olddir /var/log/borg-backup
+      }" > ~{{ borgbackup_client_user }}/.config/borg-backup-{{ inventory_hostname | regex_replace('[^\w\s]', '_') }}.logrotate
+  args:
+    executable: /bin/bash
+  register: logrotate

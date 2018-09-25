@@ -21,4 +21,4 @@
   changed_when: False
 
 - include_tasks: borg-client.yml
-  when: repo_dir is failed or inventory_hostname in groups['borgbackup_clients']
+  when: repo_dir is failed and inventory_hostname in groups['borgbackup_clients']

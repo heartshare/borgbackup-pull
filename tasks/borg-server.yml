@@ -2,15 +2,15 @@
 
 - name: server | cleanup all
   shell: |
-    [ -d "{{ item.home }}" ] && rm -rf {{ item.home }}/ &>/dev/null
-    [ -d "~root/.config/borg/" ] && rm -rf ~root/.config/borg/ &>/dev/null
-    rm -f /usr/local/bin/borg-backup-* &>/dev/null
-    rm -f /etc/cron.d/borg-backup-* &>/dev/null
+    [ -d "{{ item.home }}" ] && rm -rf {{ item.home }}/ &>/dev/null ; \
+    [ -d ~root/.config/borg/ ] && rm -rf ~root/.config/borg/* &>/dev/null ; \
+    rm -f /usr/local/bin/borg-backup-* &>/dev/null ; \
+    rm -f /etc/cron.d/borg-backup-* &>/dev/null ; \
     userdel -f -r {{ borgbackup_owner }} &>/dev/null
   args:
     executable: /bin/bash
   with_items: "{{ borgbackup_server }}"
-  register: cleanup
+  register: cleanup_server
   delegate_to: localhost
   ignore_errors: True
   changed_when: False

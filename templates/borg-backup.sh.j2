@@ -83,7 +83,9 @@ echo "${BORG_KEY_FILE_CONTENT}" > \${BORG_KEY_FILE_TMP}
 
 BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} $REPOSITORY::$_date {% for dir in borgbackup_include %}{{ dir }} {% endfor %}{% for dir in borgbackup_exclude %} --exclude '{{ dir }}' {% endfor %}2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 
-if [ "\$?" -eq "0" ]; then
+_BORG_CREATE_ECODE="\$?"
+
+if [ "\${_BORG_CREATE_ECODE}" -eq "0" ]; then
   printf "Backup of {{ inventory_hostname }} succeeded on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 else
   printf "Backup of {{ inventory_hostname }} failed on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
@@ -91,14 +93,19 @@ fi
 
 {% if not borgbackup_appendonly %}
 # prune old backups
-BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} /usr/local/bin/borg prune {{ b.options }} -v $REPOSITORY -H {{ borgbackup_retention.hourly }} -d {{ borgbackup_retention.daily }} -w {{ borgbackup_retention.weekly }} -m {{ borgbackup_retention.monthly }} -y {{ borgbackup_retention.yearly }} 2>> /var/log/borg-backup-{{ inventory_hostname }}.log
+BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} /usr/local/bin/borg prune {{ b.options }} -v $REPOSITORY -H {{ borgbackup_retention.hourly }} -d {{ borgbackup_retention.daily }} -w {{ borgbackup_retention.weekly }} -m {{ borgbackup_retention.monthly }} -y {{ borgbackup_retention.yearly }} 2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 
-if [ "\$?" -eq "0" ]; then
+_BORG_PRUNE_ECODE="\$?"
+
+if [ "\${_BORG_PRUNE_ECODE}" -eq "0" ]; then
   printf "Backup prune of {{ inventory_hostname }} succeeded on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 else
   printf "Backup prune of {{ inventory_hostname }} failed on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 fi
 
+if [ "\${_BORG_CREATE_ECODE}" -eq "0" ] && [ "\${_BORG_PRUNE_ECODE}" -eq "0" ]; then
+  logrotate -f ~{{ borgbackup_client_user }}/.config/borg-backup-{{ inventory_hostname | regex_replace('[^\w\s]', '_') }}.logrotate
+fi
   {% endif %}
 {% endfor %}
 
