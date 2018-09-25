@@ -1,7 +1,7 @@
 # Borg backup with pull mode - ansible role
 This role installs Borg backup with pull mode on a borgbackup server and clients. 
 
-The role will add a wrapper-script 'borg-backup-<FQDN>' for every client on the server. 
+The role will add a wrapper-script 'borg-backup-FQDN' for every client on the backup server. 
 
 Ansible 2.4 or higher is required to run this role.
 
@@ -10,7 +10,7 @@ Ansible 2.4 or higher is required to run this role.
 
 Setup ssh public key authentication from backup server to all clients for the root user
 
-Add to /etc/ssh/sshd_config
+Add to /etc/ssh/sshd_config on the backup server
 ```
 AllowUsers borgbackup@127.0.0.1
 
@@ -72,17 +72,14 @@ Match User borgbackup
 
 *WARNING: the trailing / in item.home is required.*
 
-```
-
-Per default the role creates a cronjob for every client in /etc/cron.d/borg-backup-<FQDN> running as root every day on a random hour between 0 and 5am on a random minute.
+Per default the role creates a cronjob for every client in /etc/cron.d/borg-backup-FQDN running as root every day on a random hour between 0 and 5am on a random minute.
 
 
 ## Usage
 
-Configure Borg on the server and on a client:
+Configure Borg on the server and on clients:
 ```
-ansible-playbook -i inventory/test backup.yml -l backup1.fiaas.co
-ansible-playbook -i inventory/test backup.yml -l client1.fiaas.co
+ansible-playbook setup-borg-pull.yml
 ```
 
 ## Further reading
