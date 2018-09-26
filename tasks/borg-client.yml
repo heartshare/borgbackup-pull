@@ -18,6 +18,10 @@
   register: borg_passphrase
   changed_when: False
 
+- name: save passphrase for borg to file
+  local_action: copy content="{{ borg_passphrase.stdout }}" dest="{{ item.home }}/secret" owner=root group=root mode=0600
+  with_items: "{{ borgbackup_server }}"
+
 - name: export passphrase
   set_fact:
     borgbackup_passphrase: "{{borg_passphrase.stdout}}"

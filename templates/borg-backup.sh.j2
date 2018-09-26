@@ -46,7 +46,7 @@ if [ "$1" = "list" ]
   then
 {% for b in borgbackup_server %}
     REPOSITORY={{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
-    printf "Archives on {{ b.fqdn }} :\n"
+    printf "Archives of {{ inventory_hostname }} on {{ b.fqdn }} :\n"
     /usr/local/bin/borg list {{ b.options }} -v $REPOSITORY
 {% endfor %}
     exit 0
@@ -71,7 +71,7 @@ if [ "$1" = "backup" ]
 {% endfor %}
 
 {% for b in borgbackup_server %}
-    printf "Backing up to {{ b.fqdn }} :\n"
+    printf "Backing up {{ inventory_hostname }} to {{ b.fqdn }} :\n"
     REPOSITORY=ssh://{{ borgbackup_owner }}@{{ b.fqdn }}:{{ b.port }}{{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
 
     ssh -i ~{{ borgbackup_client_user }}/.ssh/id_rsa {{ borgbackup_client_user }}@{{ inventory_hostname }} -R {{ b.port }}:localhost:22 bash <<EOSSH
@@ -81,7 +81,9 @@ if [ "$1" = "backup" ]
 BORG_KEY_FILE_TMP=\$(mktemp)
 echo "${BORG_KEY_FILE_CONTENT}" > \${BORG_KEY_FILE_TMP}
 
-BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} $REPOSITORY::$_date {% for dir in borgbackup_include %}{{ dir }} {% endfor %}{% for dir in borgbackup_exclude %} --exclude '{{ dir }}' {% endfor %}2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} ${REPOSITORY}::main-${_date} {% for dir in borgbackup_include %}{{ dir }} {% endfor %}{% for dir in borgbackup_exclude %} --exclude '{{ dir }}' {% endfor %}2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+
+BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} ${REPOSITORY}::logs-${_date} /var/log 2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 
 _BORG_CREATE_ECODE="\$?"
 
@@ -93,7 +95,7 @@ fi
 
 {% if not borgbackup_appendonly %}
 # prune old backups
-BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} /usr/local/bin/borg prune {{ b.options }} -v $REPOSITORY -H {{ borgbackup_retention.hourly }} -d {{ borgbackup_retention.daily }} -w {{ borgbackup_retention.weekly }} -m {{ borgbackup_retention.monthly }} -y {{ borgbackup_retention.yearly }} 2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} /usr/local/bin/borg prune {{ b.options }} -v --prefix main- ${REPOSITORY} -H {{ borgbackup_retention.hourly }} -d {{ borgbackup_retention.daily }} -w {{ borgbackup_retention.weekly }} -m {{ borgbackup_retention.monthly }} -y {{ borgbackup_retention.yearly }} 2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
 
 _BORG_PRUNE_ECODE="\$?"
 
