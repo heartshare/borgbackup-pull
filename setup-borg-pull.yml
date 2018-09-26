@@ -1,11 +1,16 @@
 ---
-- name: Setup Borg backup - pull mode
+- name: Configure Borg backup
   hosts: all
   become: True
 
   vars:
 
-    borgbackup_cleanup: true
+    borgbackup_cleanup: false
+    borgbackup_mode: serial
+
+    borgbackup_serial_cron_day: "*"
+    borgbackup_serial_cron_hour: "23"
+    borgbackup_serial_cron_minute: "00"
 
     borgbackup_server:
       - fqdn: localhost
@@ -35,11 +40,13 @@
       - "/media/"
       - "/tmp/"
       - "/lost+found"
+      - "/var/log/"
       - "/var/lib/lxc*"
       - "/var/lib/mysql*"
       - "/root/.cache"
       - "/var/cache/"
       - "/var/lib/docker/devicemapper/"
+      - "/var/lib/docker/overlay2/"
       - "sh:/home/*/.cache"
 
   roles:
