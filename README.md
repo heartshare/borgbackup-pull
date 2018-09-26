@@ -29,6 +29,7 @@ Match User borgbackup
   vars:
 
     borgbackup_cleanup: false
+    borgbackup_mode: serial
 
     borgbackup_server:
       - fqdn: localhost
@@ -71,9 +72,6 @@ Match User borgbackup
 ```
 
 *WARNING: the trailing / in item.home is required.*
-
-Per default the role creates a cronjob for every client in /etc/cron.d/borg-backup-FQDN running as root every day on a random hour between 0 and 5am on a random minute.
-
 
 ## Usage
 

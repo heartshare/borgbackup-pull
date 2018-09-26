@@ -13,16 +13,27 @@
   changed_when: False
   when: borgbackup_cleanup == true
 
-- name: generate random passphrase for borg repo encryption
+- name: server | create necessary directories
+  file:
+    path: "{{ item.home }}{{ item.pool }}/security"
+    state: directory
+    owner: "{{ borgbackup_owner }}"
+    group: "{{ borgbackup_group }}"
+    mode: 0750
+    recurse: yes
+  with_items: "{{ borgbackup_server }}"
+  delegate_to: localhost
+
+- name: server | generate random passphrase for borg repo encryption
   local_action: shell openssl rand -base64 20
   register: borg_passphrase
   changed_when: False
 
-- name: save passphrase for borg to file
-  local_action: copy content="{{ borg_passphrase.stdout }}" dest="{{ item.home }}/secret" owner=root group=root mode=0600
+- name: server | save passphrase for borg to file
+  local_action: copy content="{{ borg_passphrase.stdout }}" dest="{{ item.home }}{{ item.pool }}/security/{{ inventory_hostname }}" owner="{{ borgbackup_owner }}" group="{{ borgbackup_group }}" mode=0600
   with_items: "{{ borgbackup_server }}"
 
-- name: export passphrase
+- name: server | export passphrase
   set_fact:
     borgbackup_passphrase: "{{borg_passphrase.stdout}}"
 
@@ -39,7 +50,7 @@
   register: sshkey
   changed_when: False
 
-- name: client | disable strict key checking for backup servers
+- name: client | disable strict key checking
   blockinfile:
     dest: "~{{ borgbackup_client_user }}/.ssh/config"
     create: yes
@@ -54,7 +65,7 @@
         {% endif %}
   with_items: "{{ borgbackup_server }}"
 
-- name: client | put sshpubkey on the normal backupserver
+- name: server | put sshpubkey
   authorized_key:
     user: "{{ borgbackup_owner }}"
     key: "{{ sshkey.stdout }}"
@@ -63,23 +74,43 @@
   when: item.type == 'normal'
   with_items: "{{ borgbackup_server }}"
 
-- name: client | put wrapper script on server
+- name: server | put general wrapper script
   template:
     src: "borg-backup.sh.j2"
-    dest: "/usr/local/bin/borg-backup-{{ inventory_hostname }}"
+    dest: "/usr/local/bin/borg-backup"
     owner: "{{ borgbackup_owner }}"
     group: "{{ borgbackup_group }}"
     mode: "0744"
   delegate_to: localhost
 
-- name: client | create backup-directory on backup server
-  shell: /usr/local/bin/borg-backup-{{ inventory_hostname }} init
-  become_user: "{{ borgbackup_owner }}"
-  register: backup_init
-  changed_when: "'Remember your passphrase' in backup_init.stderr"
+- name: server | put serial wrapper script
+  template:
+    src: "borg-backup-serial.sh.j2"
+    dest: "/usr/local/bin/borg-backup-serial"
+    owner: "{{ borgbackup_owner }}"
+    group: "{{ borgbackup_group }}"
+    mode: "0744"
   delegate_to: localhost
 
-- name: client | create backup cronjob on server
+- name: server | create backup-directory
+  shell: /usr/local/bin/borg-backup init "{{ inventory_hostname }}"
+  become_user: "{{ borgbackup_owner }}"
+  register: backup_init
+  delegate_to: localhost
+
+- name: server | create backup cronjob for serial mode
+  cron:
+    cron_file: borg-backup-serial
+    user: "{{ borgbackup_client_user }}"
+    name: "borg-backup-serial"
+    minute: "{{ borgbackup_serial_cron_minute }}"
+    hour: "{{ borgbackup_serial_cron_hour }}"
+    day: "{{ borgbackup_serial_cron_day }}"
+    job: "/usr/local/bin/borg-backup-serial"
+  delegate_to: localhost
+  when: borgbackup_mode == "serial"
+
+- name: server | create backup cronjob for parallel mode
   cron:
     cron_file: borg-backup-{{ inventory_hostname | regex_replace('[^\w\s]', '_') }}
     user: "{{ borgbackup_client_user }}"
@@ -87,8 +118,9 @@
     minute: "{{ borgbackup_cron_minute }}"
     hour: "{{ borgbackup_cron_hour }}"
     day: "{{ borgbackup_cron_day }}"
-    job: "/usr/local/bin/borg-backup-{{ inventory_hostname }} backup"
+    job: "/usr/local/bin/borg-backup backup {{ inventory_hostname }}"
   delegate_to: localhost
+  when: borgbackup_mode == "parallel"
 
 - name: client | create logrotate conf
   shell: |
@@ -101,7 +133,7 @@
         missingok
         notifempty
         olddir /var/log/borg-backup
-      }" > ~{{ borgbackup_client_user }}/.config/borg-backup-{{ inventory_hostname | regex_replace('[^\w\s]', '_') }}.logrotate
+      }" > ~{{ borgbackup_client_user }}/.config/borg-backup.logrotate
   args:
     executable: /bin/bash
   register: logrotate

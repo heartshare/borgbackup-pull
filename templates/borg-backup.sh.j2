@@ -5,18 +5,15 @@ if [ -z "$1" ] || [ ! -z "$2" ]
     printf "Possible: info | init | list | backup | mount \n\n"
 fi
 
-BORG_PASSPHRASE_CONTENT="{{ borgbackup_passphrase }}"
-export BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT}
-export BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT}
-export BORG_RELOCATED_REPO_ACCESS_IS_OK=yes
+export _hostname="${2}"
 
 {% for b in borgbackup_server %}
+_passphrase_content="$(cat {{ b.home }}{{ b.pool }}/security/${_hostname})"
+export BORG_PASSPHRASE=${_passphrase_content}
+export BORG_NEW_PASSPHRASE=${_passphrase_content}
+export BORG_RELOCATED_REPO_ACCESS_IS_OK=yes
 export BORG_BASE_DIR="{{ b.home }}"
-BORG_KEY_FILE_NAME_TMP=$(echo "{{ b.home }}{{ b.pool }}/{{ inventory_hostname }}" | tr '[/\-.]' '_')
 {% endfor %}
-
-BORG_KEY_FILE_NAME=$(echo ${BORG_KEY_FILE_NAME_TMP:1})
-BORG_KEY_FILE_CONTENT=$(cat ~{{ borgbackup_owner }}/.config/borg/keys/${BORG_KEY_FILE_NAME})
 
 # Small helper commands, like listing backups, will help us in the future :)
 
@@ -24,8 +21,8 @@ if [ "$1" = "info" ]
   then
     if [ -z "$2" ]; then printf "run $0 with list and use the backup-tag to request information\n"; exit 1; fi
 {% for b in borgbackup_server %}
-    REPOSITORY={{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
-    /usr/local/bin/borg info {{ b.options }} $REPOSITORY::$2
+    _repository={{ b.home }}{{ b.pool }}/${_hostname}
+    /usr/local/bin/borg info {{ b.options }} ${_repository}::$2
 {% endfor %}
     exit 0
 fi
@@ -35,8 +32,8 @@ if [ "$1" = "mount" ]
     if [ -z "$2" ]; then printf "Select the backup to mount\n"; exit 1; fi
     if [ -z "$3" ]; then printf "Select the path to mount the backup on\n"; exit 1; fi
 {% for b in borgbackup_server %}
-    REPOSITORY={{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
-    /usr/local/bin/borg mount {{ b.options }} $REPOSITORY::$2 $3
+    _repository={{ b.home }}{{ b.pool }}/${_hostname}
+    /usr/local/bin/borg mount {{ b.options }} ${_repository}::$2 $3
     if [ "$?" = "0" ]; then printf "Backup mounted on $3, do not forget to unmount!\n"; fi
     exit 0
 {% endfor %}
@@ -45,9 +42,9 @@ fi
 if [ "$1" = "list" ]
   then
 {% for b in borgbackup_server %}
-    REPOSITORY={{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
-    printf "Archives of {{ inventory_hostname }} on {{ b.fqdn }} :\n"
-    /usr/local/bin/borg list {{ b.options }} -v $REPOSITORY
+    _repository={{ b.home }}{{ b.pool }}/${_hostname}
+    printf "Archives of ${_hostname} on {{ b.fqdn }} :\n"
+    /usr/local/bin/borg list {{ b.options }} -v ${_repository}
 {% endfor %}
     exit 0
 fi
@@ -55,8 +52,8 @@ fi
 if [ "$1" = "init" ]
   then
 {% for b in borgbackup_server %}
-    REPOSITORY={{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
-    /usr/local/bin/borg init --encryption={{ borgbackup_encryption_mode }}{% if borgbackup_appendonly_repoconfig %} --append-only{% endif %} {{ b.options }} $REPOSITORY
+    _repository={{ b.home }}{{ b.pool }}/${_hostname}
+    /usr/local/bin/borg init --encryption={{ borgbackup_encryption_mode }}{% if borgbackup_appendonly_repoconfig %} --append-only{% endif %} {{ b.options }} ${_repository}
 {% endfor %}
     exit 0
 fi
@@ -71,42 +68,39 @@ if [ "$1" = "backup" ]
 {% endfor %}
 
 {% for b in borgbackup_server %}
-    printf "Backing up {{ inventory_hostname }} to {{ b.fqdn }} :\n"
-    REPOSITORY=ssh://{{ borgbackup_owner }}@{{ b.fqdn }}:{{ b.port }}{{ b.home }}{{ b.pool }}/{{ inventory_hostname }}
+    printf "Backing up ${_hostname} to {{ b.fqdn }} :\n"
+    _repository=ssh://{{ borgbackup_owner }}@{{ b.fqdn }}:{{ b.port }}{{ b.home }}{{ b.pool }}/${_hostname}
 
-    ssh -i ~{{ borgbackup_client_user }}/.ssh/id_rsa {{ borgbackup_client_user }}@{{ inventory_hostname }} -R {{ b.port }}:localhost:22 bash <<EOSSH
+    ssh -i ~{{ borgbackup_client_user }}/.ssh/id_rsa {{ borgbackup_client_user }}@${_hostname} -R {{ b.port }}:localhost:22 bash <<EOSSH
 
 [ -d "/var/log/borg-backup" ] || mkdir /var/log/borg-backup
 
-BORG_KEY_FILE_TMP=\$(mktemp)
-echo "${BORG_KEY_FILE_CONTENT}" > \${BORG_KEY_FILE_TMP}
+BORG_PASSPHRASE=${_passphrase_content} BORG_NEW_PASSPHRASE=${_passphrase_content} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} ${_repository}::main-${_date} {% for dir in borgbackup_include %}{{ dir }} {% endfor %}{% for dir in borgbackup_exclude %} --exclude '{{ dir }}' {% endfor %}2>> /var/log/borg-backup/borg-backup-${_hostname}.log
 
-BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} ${REPOSITORY}::main-${_date} {% for dir in borgbackup_include %}{{ dir }} {% endfor %}{% for dir in borgbackup_exclude %} --exclude '{{ dir }}' {% endfor %}2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
-
-BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_NEW_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} ${REPOSITORY}::logs-${_date} /var/log 2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+BORG_PASSPHRASE=${_passphrase_content} BORG_NEW_PASSPHRASE=${_passphrase_content} BORG_RELOCATED_REPO_ACCESS_IS_OK=yes /usr/local/bin/borg create --progress --show-rc --exclude-caches --compression {{ borgbackup_compression }} --stats {{ b.options }} ${_repository}::logs-${_date} /var/log 2>> /var/log/borg-backup/borg-backup-${_hostname}.log
 
 _BORG_CREATE_ECODE="\$?"
 
 if [ "\${_BORG_CREATE_ECODE}" -eq "0" ]; then
-  printf "Backup of {{ inventory_hostname }} succeeded on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+  printf "Backup of ${_hostname} succeeded on $(date)\n" >> /var/log/borg-backup/borg-backup-${_hostname}.log
 else
-  printf "Backup of {{ inventory_hostname }} failed on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+  printf "Backup of ${_hostname} failed on $(date)\n" >> /var/log/borg-backup/borg-backup-${_hostname}.log
 fi
 
 {% if not borgbackup_appendonly %}
 # prune old backups
-BORG_KEY_FILE=\${BORG_KEY_FILE_TMP} BORG_PASSPHRASE=${BORG_PASSPHRASE_CONTENT} /usr/local/bin/borg prune {{ b.options }} -v --prefix main- ${REPOSITORY} -H {{ borgbackup_retention.hourly }} -d {{ borgbackup_retention.daily }} -w {{ borgbackup_retention.weekly }} -m {{ borgbackup_retention.monthly }} -y {{ borgbackup_retention.yearly }} 2>> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+BORG_PASSPHRASE=${_passphrase_content} /usr/local/bin/borg prune {{ b.options }} -v --prefix main- ${_repository} -H {{ borgbackup_retention.hourly }} -d {{ borgbackup_retention.daily }} -w {{ borgbackup_retention.weekly }} -m {{ borgbackup_retention.monthly }} -y {{ borgbackup_retention.yearly }} 2>> /var/log/borg-backup/borg-backup-${_hostname}.log
 
 _BORG_PRUNE_ECODE="\$?"
 
 if [ "\${_BORG_PRUNE_ECODE}" -eq "0" ]; then
-  printf "Backup prune of {{ inventory_hostname }} succeeded on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+  printf "Backup prune of ${_hostname} succeeded on $(date)\n" >> /var/log/borg-backup/borg-backup-${_hostname}.log
 else
-  printf "Backup prune of {{ inventory_hostname }} failed on $(date)\n" >> /var/log/borg-backup/borg-backup-{{ inventory_hostname }}.log
+  printf "Backup prune of ${_hostname} failed on $(date)\n" >> /var/log/borg-backup/borg-backup-${_hostname}.log
 fi
 
 if [ "\${_BORG_CREATE_ECODE}" -eq "0" ] && [ "\${_BORG_PRUNE_ECODE}" -eq "0" ]; then
-  logrotate -f ~{{ borgbackup_client_user }}/.config/borg-backup-{{ inventory_hostname | regex_replace('[^\w\s]', '_') }}.logrotate
+  logrotate -f ~{{ borgbackup_client_user }}/.config/borg-backup.logrotate
 fi
   {% endif %}
 {% endfor %}
@@ -116,7 +110,6 @@ fi
 {{ postcommand }}
 {% endfor %}
 
-rm -f \${BORG_KEY_FILE_TMP}
 EOSSH
 
 fi
