@@ -14,7 +14,7 @@
 
     borgbackup_server:
       - fqdn: localhost
-        port: 2222
+        port: 4444
         type: normal
         home: /mnt/borgbackup/
         pool: repos

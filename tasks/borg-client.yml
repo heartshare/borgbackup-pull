@@ -30,7 +30,7 @@
   changed_when: False
 
 - name: server | save passphrase for borg to file
-  local_action: copy content="{{ borg_passphrase.stdout }}" dest="{{ item.home }}{{ item.pool }}/security/{{ inventory_hostname }}" owner="{{ borgbackup_owner }}" group="{{ borgbackup_group }}" mode=0600
+  local_action: copy content="{{ borg_passphrase.stdout }}" dest="{{ item.home }}{{ item.pool }}/security/{{ inventory_hostname }}" owner="{{ borgbackup_owner }}" group="{{ borgbackup_group }}" mode=0600 force=no
   with_items: "{{ borgbackup_server }}"
 
 - name: server | export passphrase
@@ -93,10 +93,12 @@
   delegate_to: localhost
 
 - name: server | create backup-directory
-  shell: /usr/local/bin/borg-backup init "{{ inventory_hostname }}"
+  shell: /usr/local/bin/borg-backup -f "{{ inventory_hostname }}" -t init
   become_user: "{{ borgbackup_owner }}"
   register: backup_init
   delegate_to: localhost
+  failed_when: "'already exists' not in backup_init.stderr"
+  changed_when: backup_init.rc == 0
 
 - name: server | create backup cronjob for serial mode
   cron:
@@ -118,22 +120,27 @@
     minute: "{{ borgbackup_cron_minute }}"
     hour: "{{ borgbackup_cron_hour }}"
     day: "{{ borgbackup_cron_day }}"
-    job: "/usr/local/bin/borg-backup backup {{ inventory_hostname }}"
+    job: "/usr/local/bin/borg-backup -f {{ inventory_hostname }} -t backup"
   delegate_to: localhost
   when: borgbackup_mode == "parallel"
 
 - name: client | create logrotate conf
   shell: |
-      echo -e "/var/log/borg-backup/borg-backup-*.log {
-        create
-        dateext
-        daily
-        rotate 7
-        compress
-        missingok
-        notifempty
-        olddir /var/log/borg-backup
-      }" > ~{{ borgbackup_client_user }}/.config/borg-backup.logrotate
+      if [[ -f ~{{ borgbackup_client_user }}/.config/borg-backup.logrotate ]]; then 
+        echo "logrotate conf exists"
+      else
+        echo -e "/var/log/borg-backup/borg-backup-*.log {
+          create
+          dateext
+          daily
+          rotate 7
+          compress
+          missingok
+          notifempty
+          olddir /var/log/borg-backup
+        }" > ~{{ borgbackup_client_user }}/.config/borg-backup.logrotate
+      fi
   args:
     executable: /bin/bash
   register: logrotate
+  changed_when: "'logrotate conf exists' not in logrotate.stdout"

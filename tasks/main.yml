@@ -1,5 +1,14 @@
 ---
-# Due to inverse logic behaviour when searching for an item in an undefined list.
+
+- name: server | create dynamic meta file
+  template:
+    src: "meta.j2"
+    dest: "{{ role_path }}/meta/main.yml"
+    owner: "{{ borgbackup_client_user }}"
+    group: "{{ borgbackup_client_user }}"
+    mode: "0644"
+  delegate_to: localhost
+
 - set_fact:
     borgbackup_server_group: "{{ groups.borgbackup_server | default([]) }} "
 
@@ -11,14 +20,5 @@
 - include_tasks: borg-server.yml
   when: inventory_hostname in borgbackup_server_group
 
-- name: client | check if repo directory exists
-  shell: "[ -d {{ item.home }}{{ item.pool }}/{{ inventory_hostname }} ]"
-  with_items: "{{ borgbackup_server }}"
-  register: repo_dir
-  delegate_to: localhost
-  ignore_errors: True
-  no_log: True
-  changed_when: False
-
 - include_tasks: borg-client.yml
-  when: repo_dir is failed and inventory_hostname in groups['borgbackup_clients']
+  when: inventory_hostname in groups['borgbackup_clients']

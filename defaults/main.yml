@@ -1,4 +1,8 @@
 ---
+
+author: Masi Osmani
+description: Install Borg backup server and client - pull mode
+
 borgbackup_required: True
 borgbackup_mode: serial
 

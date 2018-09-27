@@ -1,12 +1,123 @@
-#!{{ borgbackup_shell }}
+#!/usr/bin/env bash
 
-if [ -z "$1" ] || [ ! -z "$2" ]
-  then
-    printf "Possible: info | init | list | backup | mount \n\n"
+#========================================================================================================
+#AUTHOR                : {{ author }}
+#DESCRIPTION           : {{ description }}
+#========================================================================================================
+
+#========================================================================================================
+# HELP
+#========================================================================================================
+
+##
+##    usage:    bash ./borg-backup.sh -f <fqdn> -t init
+##    usage:    bash ./borg-backup.sh -f <fqdn> -t backup
+##    usage:    bash ./borg-backup.sh -f <fqdn> -t list
+##    usage:    bash ./borg-backup.sh -f <fqdn> -t info -a <archive name>
+##    usage:    bash ./borg-backup.sh -f <fqdn> -t mount -a <archive name> -m <mountpoint>
+##
+
+_help=$(grep "^## " "${BASH_SOURCE[0]}" | cut -c 4-)
+
+#========================================================================================================
+# SYNTAX VERIFICATION
+#========================================================================================================
+
+set -euo pipefail
+
+#========================================================================================================
+# DEFAULT VARIABLE DEFINITION
+#========================================================================================================
+### default vars
+_script_name=$(basename "$0")
+_script_absolute_path="$(readlink -f ${BASH_SOURCE[0]})"
+_script_directory="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+_lock_dir="/tmp"
+_lock__fd="200"
+_log_dir="/var/log"
+_b_red='\e[1;31m'
+_b_green='\e[1;32m'
+_msg1="\nUnknown option.\n"
+_msg2="\nOption invalid or incomplete\n"
+
+#========================================================================================================
+# DEFAULT FUNCTION DEFINITION
+#========================================================================================================
+
+_opt_h() {
+  echo "${_help}"
+  exit 1
+}
+
+_eexit() {
+  local _error_str="$@"
+
+  echo ${_error_str}
+  exit 1
+}
+
+lock() {
+    local _prefix=${1}
+    local _fd=${2:-${_lock__fd}}
+    local _lock_file=${_lock_dir}/${_prefix}.lock
+
+    # create lock file
+    eval "exec ${_fd}>${_lock_file}"
+
+    # acquier the lock
+    flock -n "${_fd}" && return 0 || return 1
+}
+
+#========================================================================================================
+# GETOPTS
+#========================================================================================================
+
+while getopts "f:t:a:m:h" options 2>/dev/null; do
+  case $options in
+    f) _fqdn="$OPTARG";
+       ;;
+    t) _type="$OPTARG";
+       ;;
+    a) _archive="$OPTARG";
+       ;;
+    m) _mountpoint="$OPTARG";
+       ;;
+    h) _opt_h;
+       ;;
+    ?) echo -e "\nOption invalid or incomplete\n" >&2
+       _opt_h;
+       exit 1
+       ;;
+  esac
+done
+
+if [[ "$#" -lt "1" ]] || [[ "$#" -gt "8" ]]; then
+  echo -e "\nPlease provide enough options.\n"
+  _opt_h
 fi
 
-export _fqdn="${2}"
+if [[ -z ${3:-} ]] || [[ "${3}" != "-t" ]]; then
+  echo -e "${_msg2}"
+  _opt_h
+fi
 
+if [[ "$#" -eq "5" ]]; then
+  if [[ -z ${5:-} ]] || [[ "${5}" != "-a" ]]; then
+    echo -e "${_msg2}"
+    _opt_h
+  fi
+fi
+
+if [[ "$#" -eq "7" ]]; then
+  if [[ -z ${7:-} ]] || [[ "${7}" != "-m" ]]; then
+    echo -e "${_msg2}"
+    _opt_h
+  fi
+fi
+
+#========================================================================================================
+# CUSTOM VARIABLE DEFINITION
+#========================================================================================================
 {% for b in borgbackup_server %}
 _passphrase_content="$(cat {{ b.home }}{{ b.pool }}/security/${_fqdn})"
 export BORG_PASSPHRASE=${_passphrase_content}
@@ -15,63 +126,31 @@ export BORG_RELOCATED_REPO_ACCESS_IS_OK=yes
 export BORG_BASE_DIR="{{ b.home }}"
 {% endfor %}
 
-# Small helper commands, like listing backups, will help us in the future :)
+#========================================================================================================
+# CUSTOM FUNCTION DEFINITION
+#========================================================================================================
 
-if [ "$1" = "info" ]
-  then
-    if [ -z "$2" ]; then printf "run $0 with list and use the backup-tag to request information\n"; exit 1; fi
+function _init() {
 {% for b in borgbackup_server %}
-    _repository={{ b.home }}{{ b.pool }}/${_fqdn}
-    /usr/local/bin/borg info {{ b.options }} ${_repository}::$2
+  _repository={{ b.home }}{{ b.pool }}/${_fqdn}
+  /usr/local/bin/borg init --encryption={{ borgbackup_encryption_mode }}{% if borgbackup_appendonly_repoconfig %} --append-only{% endif %} {{ b.options }} ${_repository}
 {% endfor %}
-    exit 0
-fi
+  exit 0
+}
 
-if [ "$1" = "mount" ]
-  then
-    if [ -z "$2" ]; then printf "Select the backup to mount\n"; exit 1; fi
-    if [ -z "$3" ]; then printf "Select the path to mount the backup on\n"; exit 1; fi
-{% for b in borgbackup_server %}
-    _repository={{ b.home }}{{ b.pool }}/${_fqdn}
-    /usr/local/bin/borg mount {{ b.options }} ${_repository}::$2 $3
-    if [ "$?" = "0" ]; then printf "Backup mounted on $3, do not forget to unmount!\n"; fi
-    exit 0
-{% endfor %}
-fi
+function _backup() {
+  _date=$(date +%Y%m%d-%H%M)
 
-if [ "$1" = "list" ]
-  then
-{% for b in borgbackup_server %}
-    _repository={{ b.home }}{{ b.pool }}/${_fqdn}
-    printf "Archives of ${_fqdn} on {{ b.fqdn }} :\n"
-    /usr/local/bin/borg list {{ b.options }} -v ${_repository}
-{% endfor %}
-    exit 0
-fi
-
-if [ "$1" = "init" ]
-  then
-{% for b in borgbackup_server %}
-    _repository={{ b.home }}{{ b.pool }}/${_fqdn}
-    /usr/local/bin/borg init --encryption={{ borgbackup_encryption_mode }}{% if borgbackup_appendonly_repoconfig %} --append-only{% endif %} {{ b.options }} ${_repository}
-{% endfor %}
-    exit 0
-fi
-
-if [ "$1" = "backup" ]
-  then
-    _date=$(date +%Y%m%d-%H%M)
-
-    # Running some commands pre-backup
+  # Running some commands pre-backup
 {% for precommand in borgbackup_pre_commands %}
-    {{ precommand }}
+  {{ precommand }}
 {% endfor %}
 
 {% for b in borgbackup_server %}
-    printf "Backing up ${_fqdn} to {{ b.fqdn }} :\n"
-    _repository=ssh://{{ borgbackup_owner }}@{{ b.fqdn }}:{{ b.port }}{{ b.home }}{{ b.pool }}/${_fqdn}
+  printf "Backing up ${_fqdn} to {{ b.fqdn }} :\n"
+  _repository=ssh://{{ borgbackup_owner }}@{{ b.fqdn }}:{{ b.port }}{{ b.home }}{{ b.pool }}/${_fqdn}
 
-    ssh -i ~{{ borgbackup_client_user }}/.ssh/id_rsa {{ borgbackup_client_user }}@${_fqdn} -R {{ b.port }}:localhost:22 bash <<EOSSH
+  ssh -i ~{{ borgbackup_client_user }}/.ssh/id_rsa {{ borgbackup_client_user }}@${_fqdn} -R {{ b.port }}:localhost:22 bash <<EOSSH
 
 [ -d "/var/log/borg-backup" ] || mkdir /var/log/borg-backup
 
@@ -111,5 +190,59 @@ fi
 {% endfor %}
 
 EOSSH
+}
 
-fi
+function _list() {
+{% for b in borgbackup_server %}
+  _repository={{ b.home }}{{ b.pool }}/${_fqdn}
+  printf "Archives of ${_fqdn} on {{ b.fqdn }} :\n"
+  /usr/local/bin/borg list {{ b.options }} -v ${_repository}
+{% endfor %}
+  exit 0
+}
+
+function _info() {
+  if [[ -z ${1} ]]; then
+    echo -e "${_msg2}"
+    _opt_h
+  fi
+
+{% for b in borgbackup_server %}
+  _repository={{ b.home }}{{ b.pool }}/${_fqdn}
+  /usr/local/bin/borg info {{ b.options }} ${_repository}::${1}
+{% endfor %}
+  exit 0
+}
+
+function _mount() {
+  if [[ -z ${1} ]] || [[ -z ${2} ]]; then
+    echo -e "${_msg2}"
+    _opt_h
+  fi
+
+{% for b in borgbackup_server %}
+  _repository={{ b.home }}{{ b.pool }}/${_fqdn}
+  /usr/local/bin/borg mount {{ b.options }} ${_repository}::${1} ${2}
+  if [ "$?" = "0" ]; then printf "Backup mounted on ${2}, do not forget to unmount!\n"; fi
+  exit 0
+{% endfor %}
+}
+
+#========================================================================================================
+# FUNCTION CALL
+#========================================================================================================
+function _main() {
+
+  if [[ "${_type}" == "init" ]]; then
+    _init
+  elif [[ "${_type}" == "backup" ]]; then
+    _backup
+  elif [[ "${_type}" == "list" ]]; then
+    _list
+  elif [[ "${_type}" == "info" ]]; then
+    _info ${_archive:-}
+  elif [[ "${_type}" == "mount" ]]; then
+    _mount ${_archive:-} ${_mountpoint:-}
+  fi
+}
+_main
