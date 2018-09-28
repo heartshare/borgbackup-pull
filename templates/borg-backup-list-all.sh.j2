@@ -1,0 +1,8 @@
+#!{{ borgbackup_shell }}
+
+{% for b in borgbackup_server %}
+for _h in $(ls -1d {{ b.home }}{{ b.pool }}/security/* | cut -d "/" -f 6)
+do
+  /usr/local/bin/borg-backup -f "${_h}" -t list
+done
+{% endfor %}
