@@ -13,7 +13,7 @@
 ##    usage:    bash ./borg-backup.sh -f <fqdn> -t init
 ##    usage:    bash ./borg-backup.sh -f <fqdn> -t backup
 ##    usage:    bash ./borg-backup.sh -f <fqdn> -t list
-##    usage:    bash ./borg-backup.sh -f <fqdn> -t info -a <archive name>
+##    usage:    bash ./borg-backup.sh -f <fqdn> -t info [ -a <archive name> ]
 ##    usage:    bash ./borg-backup.sh -f <fqdn> -t mount -a <archive name> -m <mountpoint>
 ##
 
@@ -202,14 +202,14 @@ function _list() {
 }
 
 function _info() {
-  if [[ -z ${1} ]]; then
-    echo -e "${_msg2}"
-    _opt_h
-  fi
-
 {% for b in borgbackup_server %}
   _repository={{ b.home }}{{ b.pool }}/${_fqdn}
-  /usr/local/bin/borg info {{ b.options }} ${_repository}::${1}
+
+  if [[ -z ${1:-} ]]; then
+    /usr/local/bin/borg info {{ b.options }} ${_repository}
+  else
+    /usr/local/bin/borg info {{ b.options }} ${_repository}::${1}
+  fi
 {% endfor %}
   exit 0
 }
